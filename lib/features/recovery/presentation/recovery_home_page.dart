@@ -466,40 +466,103 @@ class _Workspace extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: EdgeInsets.fromLTRB(
-        compact ? 18 : 36,
-        24,
-        compact ? 18 : 36,
-        40,
-      ),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1120),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (compact) ...[const _Brand(), const SizedBox(height: 28)],
-              const _PageHeader(),
-              const SizedBox(height: 24),
-              _SourceAndScope(
-                controller: controller,
-                onPickSource: onPickSource,
-                onAuthorizeDevice: onAuthorizeDevice,
-                onRefreshDevices: onRefreshDevices,
+    final horizontalPadding = compact ? 18.0 : 36.0;
+    final candidates =
+        controller.summary?.candidates ?? const <RecoveryCandidate>[];
+
+    return CustomScrollView(
+      slivers: [
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(
+            horizontalPadding,
+            24,
+            horizontalPadding,
+            0,
+          ),
+          sliver: SliverToBoxAdapter(
+            child: _WorkspaceWidth(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (compact) ...[const _Brand(), const SizedBox(height: 28)],
+                  const _PageHeader(),
+                  const SizedBox(height: 24),
+                  _SourceAndScope(
+                    controller: controller,
+                    onPickSource: onPickSource,
+                    onAuthorizeDevice: onAuthorizeDevice,
+                    onRefreshDevices: onRefreshDevices,
+                  ),
+                  const SizedBox(height: 18),
+                  _ScanPanel(controller: controller),
+                  const SizedBox(height: 24),
+                  _ResultsHeader(
+                    candidateCount: candidates.length,
+                    onRecoverAll: onRecoverAll,
+                  ),
+                ],
               ),
-              const SizedBox(height: 18),
-              _ScanPanel(controller: controller),
-              const SizedBox(height: 24),
-              _ResultsSection(
-                controller: controller,
-                onRecoverOne: onRecoverOne,
-                onRecoverAll: onRecoverAll,
-                onPreview: onPreview,
-              ),
-            ],
+            ),
           ),
         ),
+        if (candidates.isEmpty)
+          SliverPadding(
+            padding: EdgeInsets.fromLTRB(
+              horizontalPadding,
+              14,
+              horizontalPadding,
+              40,
+            ),
+            sliver: SliverToBoxAdapter(
+              child: _WorkspaceWidth(
+                child: _EmptyResults(phase: controller.phase),
+              ),
+            ),
+          )
+        else
+          SliverPadding(
+            padding: EdgeInsets.fromLTRB(
+              horizontalPadding,
+              14,
+              horizontalPadding,
+              40,
+            ),
+            sliver: SliverList.builder(
+              itemCount: candidates.length,
+              itemBuilder: (context, index) {
+                final candidate = candidates[index];
+                return _WorkspaceWidth(
+                  child: _LazyResultItem(
+                    candidate: candidate,
+                    recoveredPath: controller.recoveredPaths[candidate.id],
+                    first: index == 0,
+                    last: index == candidates.length - 1,
+                    onRecover: () => onRecoverOne(candidate),
+                    onPreview: candidate.canPreview
+                        ? () => onPreview(candidate)
+                        : null,
+                  ),
+                );
+              },
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _WorkspaceWidth extends StatelessWidget {
+  const _WorkspaceWidth({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1120),
+        child: SizedBox(width: double.infinity, child: child),
       ),
     );
   }
@@ -1106,68 +1169,83 @@ class _ScanPanel extends StatelessWidget {
   }
 }
 
-class _ResultsSection extends StatelessWidget {
-  const _ResultsSection({
-    required this.controller,
-    required this.onRecoverOne,
+class _ResultsHeader extends StatelessWidget {
+  const _ResultsHeader({
+    required this.candidateCount,
     required this.onRecoverAll,
-    required this.onPreview,
   });
 
-  final RecoveryController controller;
-  final ValueChanged<RecoveryCandidate> onRecoverOne;
+  final int candidateCount;
   final VoidCallback onRecoverAll;
-  final ValueChanged<RecoveryCandidate> onPreview;
 
   @override
   Widget build(BuildContext context) {
-    final candidates =
-        controller.summary?.candidates ?? const <RecoveryCandidate>[];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                '发现的文件',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-              ),
-            ),
-            if (candidates.isNotEmpty)
-              OutlinedButton.icon(
-                onPressed: onRecoverAll,
-                icon: const Icon(Icons.download_done_rounded, size: 18),
-                label: Text('全部恢复 (${candidates.length})'),
-              ),
-          ],
+        Expanded(
+          child: Text(
+            '发现的文件',
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+          ),
         ),
-        const SizedBox(height: 14),
-        if (candidates.isEmpty)
-          _EmptyResults(phase: controller.phase)
-        else
-          Card(
-            child: ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: candidates.length,
-              separatorBuilder: (context, index) => const Divider(height: 1),
-              itemBuilder: (context, index) {
-                final candidate = candidates[index];
-                return _ResultTile(
-                  candidate: candidate,
-                  recoveredPath: controller.recoveredPaths[candidate.id],
-                  onRecover: () => onRecoverOne(candidate),
-                  onPreview: candidate.canPreview
-                      ? () => onPreview(candidate)
-                      : null,
-                );
-              },
-            ),
+        if (candidateCount > 0)
+          OutlinedButton.icon(
+            onPressed: onRecoverAll,
+            icon: const Icon(Icons.download_done_rounded, size: 18),
+            label: Text('全部恢复 ($candidateCount)'),
           ),
       ],
+    );
+  }
+}
+
+class _LazyResultItem extends StatelessWidget {
+  const _LazyResultItem({
+    required this.candidate,
+    required this.recoveredPath,
+    required this.first,
+    required this.last,
+    required this.onRecover,
+    required this.onPreview,
+  });
+
+  final RecoveryCandidate candidate;
+  final String? recoveredPath;
+  final bool first;
+  final bool last;
+  final VoidCallback onRecover;
+  final VoidCallback? onPreview;
+
+  @override
+  Widget build(BuildContext context) {
+    const borderSide = BorderSide(color: Color(0xFF203035));
+    final borderRadius = BorderRadius.vertical(
+      top: first ? const Radius.circular(18) : Radius.zero,
+      bottom: last ? const Radius.circular(18) : Radius.zero,
+    );
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0xFF0E1A1E),
+        borderRadius: borderRadius,
+        border: Border(
+          left: borderSide,
+          top: first ? borderSide : BorderSide.none,
+          right: borderSide,
+          bottom: borderSide,
+        ),
+      ),
+      child: ClipRRect(
+        borderRadius: borderRadius,
+        child: _ResultTile(
+          candidate: candidate,
+          recoveredPath: recoveredPath,
+          onRecover: onRecover,
+          onPreview: onPreview,
+        ),
+      ),
     );
   }
 }
